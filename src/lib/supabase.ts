@@ -10,11 +10,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Check for placeholder values
-if (supabaseUrl.includes('your_supabase_project_url_here') || supabaseUrl === 'your_supabase_project_url_here') {
+if (supabaseUrl.includes('https://shffqtfvzkpmvzrjrhee.supabase.co') || supabaseUrl === 'https://shffqtfvzkpmvzrjrhee.supabase.co') {
   throw new Error('Please replace the placeholder VITE_SUPABASE_URL in your .env file with your actual Supabase project URL. You can find this in your Supabase project settings under API.');
 }
 
-if (supabaseAnonKey.includes('your_supabase_anon_key_here') || supabaseAnonKey === 'your_supabase_anon_key_here') {
+if (supabaseAnonKey.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoZmZxdGZ2emtwbXZ6cmpyaGVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTExMDM3OTAsImV4cCI6MjA2NjY3OTc5MH0.teJlM3LCkMN2jj8e9QeHydjFtGjB-sI_PHFtRAsH5Cs') || supabaseAnonKey === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoZmZxdGZ2emtwbXZ6cmpyaGVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTExMDM3OTAsImV4cCI6MjA2NjY3OTc5MH0.teJlM3LCkMN2jj8e9QeHydjFtGjB-sI_PHFtRAsH5Cs') {
   throw new Error('Please replace the placeholder VITE_SUPABASE_ANON_KEY in your .env file with your actual Supabase anonymous key. You can find this in your Supabase project settings under API.');
 }
 
