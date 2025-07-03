@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Session } from '@supabase/supabase-js';
+import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase, dbHelpers } from '../lib/supabase';
 
 interface UserProfile {
@@ -36,43 +36,78 @@ export const useAuth = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user) {
-        loadUserProfile(session.user);
-      } else {
-        setLoading(false);
+    const getInitialSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          setError(error.message);
+          return;
+        }
+
+        if (mounted) {
+          setSession(session);
+          if (session?.user) {
+            await loadUserProfile(session.user);
+          } else {
+            setLoading(false);
+          }
+        }
+      } catch (err) {
+        console.error('Session initialization error:', err);
+        if (mounted) {
+          setError('Failed to initialize authentication');
+          setLoading(false);
+        }
       }
-    });
+    };
+
+    getInitialSession();
 
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session);
-      if (session?.user) {
-        await loadUserProfile(session.user);
-      } else {
-        setUser(null);
-        setLoading(false);
+      console.log('Auth state change:', event);
+      
+      if (mounted) {
+        setSession(session);
+        setError(null);
+        
+        if (session?.user) {
+          await loadUserProfile(session.user);
+        } else {
+          setUser(null);
+          setLoading(false);
+        }
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loadUserProfile = async (authUser: User) => {
     try {
+      setLoading(true);
       const profile = await dbHelpers.getUserById(authUser.id);
+      
       setUser({
         ...authUser,
         profile: profile
       });
     } catch (error) {
       console.error('Error loading user profile:', error);
+      // If profile doesn't exist, user still has basic auth info
       setUser(authUser as AuthUser);
     } finally {
       setLoading(false);
@@ -89,11 +124,15 @@ export const useAuth = () => {
     cell?: string;
   }) => {
     try {
+      setLoading(true);
+      setError(null);
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: userData
+          data: userData,
+          emailRedirectTo: `${window.location.origin}/auth/callback`
         }
       });
 
@@ -101,42 +140,82 @@ export const useAuth = () => {
 
       // Create user profile in our users table
       if (data.user) {
-        await dbHelpers.createUser({
-          id: data.user.id,
-          email,
-          ...userData
-        });
+        try {
+          await dbHelpers.createUser({
+            id: data.user.id,
+            email,
+            ...userData
+          });
+        } catch (profileError) {
+          console.error('Error creating user profile:', profileError);
+          // Don't throw here as auth was successful
+        }
       }
 
       return data;
     } catch (error) {
-      console.error('Signup error:', error);
-      throw error;
+      const authError = error as AuthError;
+      console.error('Signup error:', authError);
+      setError(authError.message);
+      throw authError;
+    } finally {
+      setLoading(false);
     }
   };
 
   const signIn = async (email: string, password: string) => {
     try {
+      setLoading(true);
+      setError(null);
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
+
+      // Update last login
+      if (data.user) {
+        try {
+          await supabase
+            .from('users')
+            .update({ last_login: new Date().toISOString() })
+            .eq('id', data.user.id);
+        } catch (updateError) {
+          console.error('Error updating last login:', updateError);
+        }
+      }
+
       return data;
     } catch (error) {
-      console.error('Signin error:', error);
-      throw error;
+      const authError = error as AuthError;
+      console.error('Signin error:', authError);
+      setError(authError.message);
+      throw authError;
+    } finally {
+      setLoading(false);
     }
   };
 
   const signOut = async () => {
     try {
+      setLoading(true);
+      setError(null);
+
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+
+      // Clear local state
+      setUser(null);
+      setSession(null);
     } catch (error) {
-      console.error('Signout error:', error);
-      throw error;
+      const authError = error as AuthError;
+      console.error('Signout error:', authError);
+      setError(authError.message);
+      throw authError;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -154,9 +233,15 @@ export const useAuth = () => {
     if (!user) throw new Error('No user logged in');
 
     try {
+      setLoading(true);
+      setError(null);
+
       const { data, error } = await supabase
         .from('users')
-        .update(updates)
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', user.id)
         .select()
         .single();
@@ -172,7 +257,44 @@ export const useAuth = () => {
       return data;
     } catch (error) {
       console.error('Profile update error:', error);
+      setError('Failed to update profile');
       throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      setError(null);
+      
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      const authError = error as AuthError;
+      console.error('Password reset error:', authError);
+      setError(authError.message);
+      throw authError;
+    }
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    try {
+      setError(null);
+      
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      const authError = error as AuthError;
+      console.error('Password update error:', authError);
+      setError(authError.message);
+      throw authError;
     }
   };
 
@@ -180,9 +302,12 @@ export const useAuth = () => {
     user,
     session,
     loading,
+    error,
     signUp,
     signIn,
     signOut,
     updateProfile,
+    resetPassword,
+    updatePassword,
   };
 };

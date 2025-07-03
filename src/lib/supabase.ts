@@ -10,11 +10,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Check for placeholder values
-if (supabaseUrl.includes('https://shffqtfvzkpmvzrjrhee.supabase.co') || supabaseUrl === 'https://shffqtfvzkpmvzrjrhee.supabase.co') {
+if (supabaseUrl === 'https://your-project-ref.supabase.co') {
   throw new Error('Please replace the placeholder VITE_SUPABASE_URL in your .env file with your actual Supabase project URL. You can find this in your Supabase project settings under API.');
 }
 
-if (supabaseAnonKey.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoZmZxdGZ2emtwbXZ6cmpyaGVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTExMDM3OTAsImV4cCI6MjA2NjY3OTc5MH0.teJlM3LCkMN2jj8e9QeHydjFtGjB-sI_PHFtRAsH5Cs') || supabaseAnonKey === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoZmZxdGZ2emtwbXZ6cmpyaGVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTExMDM3OTAsImV4cCI6MjA2NjY3OTc5MH0.teJlM3LCkMN2jj8e9QeHydjFtGjB-sI_PHFtRAsH5Cs') {
+if (supabaseAnonKey === 'your-anon-key-here') {
   throw new Error('Please replace the placeholder VITE_SUPABASE_ANON_KEY in your .env file with your actual Supabase anonymous key. You can find this in your Supabase project settings under API.');
 }
 
@@ -29,7 +29,16 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    flowType: 'pkce'
+  },
+  db: {
+    schema: 'public'
+  },
+  global: {
+    headers: {
+      'X-Client-Info': 'ubuzima-healthcare@1.0.0'
+    }
   }
 });
 
@@ -323,5 +332,48 @@ export const dbHelpers = {
     
     if (error) throw error;
     return data;
+  },
+
+  // Real-time subscriptions
+  subscribeToAppointments(userId: string, callback: (payload: any) => void) {
+    return supabase
+      .channel('appointments')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'appointments',
+          filter: `patient_id=eq.${userId}`
+        },
+        callback
+      )
+      .subscribe();
+  },
+
+  subscribeToPayments(userId: string, callback: (payload: any) => void) {
+    return supabase
+      .channel('payments')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payments',
+          filter: `user_id=eq.${userId}`
+        },
+        callback
+      )
+      .subscribe();
   }
 };
+
+// Connection status monitoring
+export const monitorConnection = () => {
+  supabase.auth.onAuthStateChange((event, session) => {
+    console.log('Auth state changed:', event, session?.user?.email);
+  });
+};
+
+// Initialize connection monitoring
+monitorConnection();
